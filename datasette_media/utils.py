@@ -14,6 +14,12 @@ ORIENTATION_EXIF_TAG = dict((v, k) for k, v in ExifTags.TAGS.items())["Orientati
 # Sanity check maximum width/height for resized images
 DEFAULT_MAX_WIDTH_HEIGHT = 4000
 
+VIDEO_FRAME_TEMPLATE = """
+<a href="{url}" title="{url}">
+  <img src="{url}" width=200 style="max-width: unset;" loading="lazy">
+</a>
+"""
+
 
 def image_type_for_bytes(b):
     image_type = imghdr.what(None, b)

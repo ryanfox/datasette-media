@@ -5,11 +5,20 @@ from concurrent import futures
 import httpx
 from mimetypes import guess_type
 from PIL import Image
+import imageio.v3 as iio
+from jinja2 import Markup
+from markupsafe import escape
 import io
 from . import utils
 
 transform_executor = None
 RESERVED_MEDIA_TYPES = ("transform_threads", "enable_transform")
+video_readers = {}
+
+@hookimpl
+def render_cell(column, value):
+    if column == "frame" and value:
+        return Markup(utils.VIDEO_FRAME_TEMPLATE.format(url=escape(value)))
 
 
 @hookimpl
@@ -76,7 +85,16 @@ async def serve_media(datasette, request, send):
                 response = await client.get(row["content_url"])
                 content = response.content
                 content_type = response.headers["content-type"]
-        image_bytes = content or open(filepath, "rb").read()
+        if media_type == 'video':
+            if filepath not in video_readers:
+                video_readers[filepath] = iio.imopen(filepath, 'r')
+
+            image_ndarray = video_readers[filepath].read(index=int(request.args["frame_no"]))
+            image_bytes = iio.imwrite("<bytes>", image_ndarray, extension=".jpg")
+        elif content:
+            image_bytes = content
+        else:
+            image_bytes = open(filepath, "rb").read()
         image = await asyncio.get_event_loop().run_in_executor(
             transform_executor,
             lambda: utils.transform_image(image_bytes, **should_transform),
