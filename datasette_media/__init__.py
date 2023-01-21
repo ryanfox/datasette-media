@@ -5,11 +5,20 @@ from concurrent import futures
 import httpx
 from mimetypes import guess_type
 from PIL import Image
+import imageio.v3 as iio
+from markupsafe import escape, Markup
 import io
 from . import utils
 
 transform_executor = None
 RESERVED_MEDIA_TYPES = ("transform_threads", "enable_transform")
+video_readers = {}
+
+@hookimpl
+def render_cell(column, value):
+    if column == 'frame' and value:
+        return Markup(utils.VIDEO_FRAME_TEMPLATE.format(url=escape(value)))
+
 
 PNG_1x1 = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x00\x00\x00\x00:~\x9bU\x00\x00\x00\nIDATx\x9cc\xfa\x0f\x00\x01\x05\x01\x02\xcf\xa0.\xcd\x00\x00\x00\x00IEND\xaeB`\x82"
 
@@ -72,13 +81,25 @@ async def serve_media(datasette, request, send):
 
     # Images are special cases, triggered by a few different conditions
     should_transform = utils.should_transform(row, config, request)
-    if should_transform:
+    if should_transform or media_type == 'video':
         if content is None and content_url:
             async with httpx.AsyncClient() as client:
                 response = await client.get(row["content_url"])
                 content = response.content
                 content_type = response.headers["content-type"]
-        image_bytes = content or open(filepath, "rb").read()
+
+        if media_type == 'video':
+            if filepath not in video_readers:
+                video_readers[filepath] = iio.imopen(filepath, 'r')
+
+            image_ndarray = video_readers[filepath].read(index=int(request.args['frame_no']))
+            image_bytes = iio.imwrite('<bytes>', image_ndarray, extension='.jpg')
+            should_transform = should_transform or {}
+        elif content:
+            image_bytes = content
+        else:
+            image_bytes = open(filepath, 'rb').read()
+
         image = await asyncio.get_event_loop().run_in_executor(
             transform_executor,
             lambda: utils.transform_image(image_bytes, **should_transform),
