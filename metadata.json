@@ -1,0 +1,11 @@
+{
+    "plugins": {
+        "datasette-media": {
+            "video": {
+                "sql": "select filename as filepath from frames where filename=:key",
+                "enable_transform": true
+            }
+        }
+    }
+}
+
